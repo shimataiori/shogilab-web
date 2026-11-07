@@ -120,10 +120,10 @@
 </section>
 
 <section class="card">
-  <h2>解析 <small>簡易AI（端末内）</small></h2>
+  <h2>解析 <small>端末内で実行</small></h2><div class="row"><label>エンジン <select id="engineChoice"><option value="simple">簡易AI</option><option value="mini">つようら王11mini</option><option value="micro">つようら王11micro</option></select></label></div><p id="isolationNotice" class="small"></p>
   <div class="row">
-    <label>読みの深さ <select id="thinkDepth"><option value="1">1手</option><option value="2" selected>2手</option></select></label>
-    <button id="analyzeBtn" class="primary">解析開始</button>
+    <label id="simpleDepth">読みの深さ <select id="thinkDepth"><option value="1">1手</option><option value="2" selected>2手</option></select></label>
+    <label id="wasmDuration" hidden>解析時間 <select id="wasmTime"><option value="1000">1秒</option><option value="3000" selected>3秒</option><option value="10000">10秒</option></select></label><button id="analyzeBtn" class="primary">解析開始</button>
     <button id="stopBtn">停止</button>
   </div>
   <div id="candArea"><p class="small">候補手はここに表示されます。</p></div>
@@ -973,5 +973,9 @@ $("memoBtn").addEventListener("click", () => {
   $("engineStatusText").textContent = engine.ready ? "簡易AI" : "盤面・棋譜モード";
 })();
 </script>
-</body>
+<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=3"></script></body>
 </html>
+
+
+
+
