@@ -120,10 +120,10 @@
 </section>
 
 <section class="card">
-  <h2>解析 <small>端末内で実行</small></h2><div class="row"><label>エンジン <select id="engineChoice"><option value="simple">簡易AI</option><option value="mini">つようら王11mini</option><option value="micro">つようら王11micro</option></select></label></div><p id="isolationNotice" class="small"></p>
+  <h2>解析 <small>端末内で実行</small></h2><div class="row"><label>エンジン <select id="engineChoice"><option value="mini">つようら王11mini</option><option value="micro" selected>つようら王11micro</option></select></label></div><p id="isolationNotice" class="small"></p>
   <div class="row">
-    <label id="simpleDepth">読みの深さ <select id="thinkDepth"><option value="1">1手</option><option value="2" selected>2手</option></select></label>
-    <label id="wasmDuration" hidden>解析時間 <select id="wasmTime"><option value="1000">1秒</option><option value="3000" selected>3秒</option><option value="10000">10秒</option></select></label><button id="analyzeBtn" class="primary">解析開始</button>
+    
+    <label id="wasmDuration">解析時間 <select id="wasmTime"><option value="1000">1秒</option><option value="3000" selected>3秒</option><option value="10000">10秒</option></select></label><button id="analyzeBtn" class="primary">解析開始</button>
     <button id="stopBtn">停止</button>
   </div>
   <div id="candArea"><p class="small">候補手はここに表示されます。</p></div>
@@ -586,38 +586,7 @@ $("navPrev").addEventListener("click", () => { if (current.parent) jumpTo(curren
 $("navNext").addEventListener("click", () => { if (current.children.length) jumpTo(current.children[0]); });
 $("navEnd").addEventListener("click", () => { let n = current; while (n.children.length) n = n.children[0]; jumpTo(n); });
 
-const engine = {
-  ready: typeof Worker === "function",
-  worker: null,
-  pending: null,
-  runSearch(sfen, count) {
-    if (!this.ready) return Promise.reject(new Error("この環境では簡易AIを起動できません"));
-    if (this.pending) return Promise.reject(new Error("探索中です"));
-    const startedAt = current;
-    return new Promise((resolve, reject) => {
-      const worker = new Worker("engine-worker.js");
-      this.worker = worker;
-      this.pending = reject;
-      const finish = () => { worker.terminate(); this.worker = null; this.pending = null; };
-      worker.onmessage = ({data}) => {
-        finish();
-        if (data.error) reject(new Error(data.error));
-        else if (startedAt !== current) reject(new Error("局面が変わったため探索を終了しました"));
-        else resolve(data);
-      };
-      worker.onerror = () => { finish(); reject(new Error("簡易AIを読み込めませんでした")); };
-      worker.postMessage({sfen, count, depth: Number($("thinkDepth").value)});
-    });
-  },
-  stopSearch() {
-    if (!this.worker) return;
-    this.worker.terminate();
-    const reject = this.pending;
-    this.worker = this.pending = null;
-    reject(new Error("探索を停止しました"));
-  },
-};
-
+const engine = { ready: typeof Worker === "function" };
 /* ================= 解析 ================= */
 function scoreText(score, turn){
   if (!score) return "";
@@ -970,11 +939,13 @@ $("memoBtn").addEventListener("click", () => {
   renderSessionList();
   setStatus(restored ? "前回の研究を復元しました" : "研究を開始できます");
   $("engineStatus").className = engine.ready ? "ready" : "error";
-  $("engineStatusText").textContent = engine.ready ? "簡易AI" : "盤面・棋譜モード";
+  $("engineStatusText").textContent = engine.ready ? "つようら王11micro" : "盤面・棋譜モード";
 })();
 </script>
-<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=3"></script></body>
+<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=4"></script></body>
 </html>
+
+
 
 
 

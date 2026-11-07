@@ -1,5 +1,5 @@
 "use strict";
-const engineChoices = {simple:"簡易AI",mini:"つようら王11mini",micro:"つようら王11micro"};
+const engineChoices = {mini:"つようら王11mini",micro:"つようら王11micro"};
 const choice = document.getElementById("engineChoice");
 const isolationNotice = document.getElementById("isolationNotice");
 const productionScope = /\/shogilab-web\/(?:index\.html)?$/.test(location.pathname);
@@ -135,16 +135,11 @@ const wasmEngine = {
 };
 
 function setEngineStatus(message){document.getElementById("engineStatusText").textContent = message;}
-const simpleSearch = engine.runSearch.bind(engine);
-const simpleStop = engine.stopSearch.bind(engine);
-engine.runSearch = (sfen,count) => choice.value === "simple" ? simpleSearch(sfen,count) : wasmEngine.run(sfen,count);
-engine.stopSearch = () => { simpleStop(); wasmEngine.stop(); };
+engine.runSearch = (sfen,count) => wasmEngine.run(sfen,count);
+engine.stopSearch = () => wasmEngine.stop();
 choice.addEventListener("change", () => {
-  simpleStop();
   wasmEngine.fail(new Error("エンジンを切り替えました"));
   setEngineStatus(engineChoices[choice.value]);
-  document.getElementById("simpleDepth").hidden = choice.value !== "simple";
-  document.getElementById("wasmDuration").hidden = choice.value === "simple";
   renderCandidatesClear();
 });
 
