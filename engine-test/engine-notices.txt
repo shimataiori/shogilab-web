@@ -1,0 +1,35 @@
+ShogiLab Web — エンジン試験版
+
+エンジン
+  YaneuraOu 9.80git (GPLv3)
+  https://github.com/yaneurao/YaneuraOu/tree/c1b80eaa09fe13d5f12b1599d1ae4d53c224de30
+  ライセンス: YaneuraOu-LICENSE.txt
+  対応ソース: YaneuraOu-corresponding-source.zip
+  WASM版の評価関数読み込み位置とメッセージ配送を変更したソースを同梱しています。
+
+評価関数
+  つようら王11mini: SFNN_ka2_4096_8_64_progress8
+  つようら王11micro: SFNN_ka2_2048_8_64_progress8
+  配布元: https://yaneuraou.yaneu.com/2026/10/14/tsuyou-11-mini-micro-released-under-mit-license/
+  評価パラメーターと進行度ファイルは公式配布版とSHA-256が一致。
+
+MIT License
+Copyright (c) やねうら王プロジェクト
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6e3b4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="将棋研究">
+
+<title>ShogiLab Web — エンジン試験版</title>
+<style>
+  :root { --board-bg:#f6e3b4; --line:#8a6d3b; --accent:#2f6fb3; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+         background:#faf7ef; color:#222; padding: env(safe-area-inset-top) 8px calc(64px + env(safe-area-inset-bottom)); }
+  header { display:flex; align-items:center; gap:8px; padding:8px 2px 4px; }
+  header h1 { font-size:17px; margin:0; }
+  #engineStatus { font-size:12px; color:#555; }
+  #engineStatus .dot { display:inline-block; width:9px; height:9px; border-radius:50%;
+                       background:#c9a227; margin-right:4px; vertical-align:middle; }
+  #engineStatus.ready .dot { background:#2e9e4f; }
+  #engineStatus.error .dot { background:#c0272d; }
+  .handbar { display:flex; align-items:center; gap:6px; min-height:34px; padding:2px 2px; font-size:14px; }
+  .handbar .who { font-weight:600; font-size:13px; white-space:nowrap; }
+  .chip { border:1px solid #bbb; background:#fff; border-radius:6px; padding:3px 7px; font-size:16px; }
+  .chip.sel { background:#ffd76e; border-color:#c9a227; }
+  .chip.none { color:#aaa; border-style:dashed; }
+  #boardWrap { width:min(96vw, 540px); margin:0 auto; }
+  #board { display:grid; grid-template-columns:repeat(9,minmax(0,1fr)); background:var(--board-bg);
+           border:2px solid var(--line); user-select:none; touch-action:manipulation; }
+  .sq { aspect-ratio:1/1; border-right:1px solid var(--line); border-bottom:1px solid var(--line);
+        display:flex; align-items:center; justify-content:center; position:relative;
+        overflow:hidden; min-width:0; }
+  .sq:nth-child(9n) { border-right:none; }
+  .sq.last { background:#ffe36c; }
+  .sq.from { background:white; }
+  .sq.sel { background:#ffd76e; }
+  .sq.dest::after { content:""; position:absolute; inset:22%; border-radius:50%;
+                    background:rgba(47,111,179,.45); }
+  .piece { font-family:"Hiragino Mincho ProN","Yu Mincho",serif; font-size:clamp(17px, 6.4vw, 34px); line-height:1; font-weight:600; pointer-events:none;
+           white-space:nowrap; }
+  .piece.long { font-size:clamp(11px, 4.0vw, 21px); letter-spacing:-0.06em; }
+  .piece.gote { transform:rotate(180deg); }
+  .piece.prom { color:#c0272d; }
+  .coords { display:flex; justify-content:space-between; font-size:11px; color:#666; padding:0 2px; }
+  .navrow { display:flex; align-items:center; gap:6px; margin:8px 0 2px; flex-wrap:wrap; }
+  button { font-size:15px; padding:8px 12px; border-radius:8px; border:1px solid #b9b0a0;
+           background:#fff; color:#222; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.45; }
+  select, input[type=text], input[type=number], textarea {
+    font-size:16px; padding:8px; border:1px solid #c9c2b4; border-radius:8px; background:#fff; }
+  textarea { width:100%; }
+  .card { background:#fff; border:1px solid #e0d9c8; border-radius:12px; padding:10px; margin:10px 0; }
+  .card h2 { font-size:15px; margin:0 0 8px; }
+  .card h2 small { color:#888; font-weight:normal; font-size:12px; }
+  .row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  #kifuScroll { overflow:auto; max-height:300px; border:1px solid #ddd; border-radius:8px;
+                background:#fff; position:relative; }
+  #kifuInner { position:relative; }
+  .kcell { position:absolute; white-space:nowrap; font-size:13px; padding:2px 6px; border-radius:4px; }
+  .kcell.cur { background:#cfe8ff; font-weight:700; }
+  table.cand { width:100%; border-collapse:collapse; font-size:13px; }
+  table.cand th, table.cand td { border-bottom:1px solid #eee; padding:5px 4px; text-align:left;
+                                 vertical-align:top; }
+  table.cand tr.sel td { background:#eaf3ff; }
+  .pv { color:#444; font-size:12px; word-break:break-all; }
+  #statusBar { position:fixed; left:0; right:0; bottom:0; background:#333; color:#fff;
+               font-size:13px; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+               min-height:42px; z-index:10; }
+  .small { font-size:12px; color:#666; }
+  .warn { color:#c0272d; }
+  dialog { border:none; border-radius:14px; padding:18px; width:min(88vw,340px); }
+  dialog::backdrop { background:rgba(0,0,0,.35); }
+  .sessitem { display:flex; justify-content:space-between; align-items:center;
+              border-bottom:1px solid #eee; padding:6px 0; }
+  label.switch { display:inline-flex; align-items:center; gap:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ShogiLab <small style="color:#645a46;font-size:12px;">エンジン試験版</small></h1>
+  <span id="engineStatus"><span class="dot"></span><span id="engineStatusText">エンジン読込中…</span></span>
+</header>
+
+<div id="boardWrap">
+  <div class="handbar" id="handTop"></div>
+  <div class="coords"><span>9</span><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+  <div id="board"></div>
+  <div class="handbar" id="handBottom"></div>
+  <div class="navrow">
+    <button id="newBtn">新しい研究</button>
+    <button id="saveBtn">名前を付けて保存</button>
+  </div>
+  <div class="small">現在局面 SFEN: <span id="sfenText" style="word-break:break-all;"></span></div>
+</div>
+
+<section class="card">
+  <h2>自由対局</h2>
+  <div class="row">
+    <button id="engineMoveBtn">エンジンに1手指させる</button>
+    <label>AIの担当 <select id="aiSide">
+      <option value="w" selected>AIは後手</option><option value="b">AIは先手</option>
+      <option value="both">AI同士</option>
+    </select></label>
+    <label class="switch"><input type="checkbox" id="autoReply"> AI自動応手</label>
+  </div>
+  <div class="row">
+    <button id="aiVsAiBtn">AI同士で対局開始</button>
+    <button id="aiStopBtn">停止</button>
+    <label>最大手数 <input type="number" id="aiMax" value="256" min="2" max="2000" style="width:76px;"></label>
+    <label>間隔(秒) <input type="number" id="aiInterval" value="2" min="0" max="15" step="0.5" style="width:64px;"></label>
+  </div>
+</section>
+
+<section class="card">
+  <h2>棋譜・分岐 <small>本筋は1列目、分岐は分かれた行から右の列へ</small></h2>
+  <div id="kifuScroll"><div id="kifuInner"></div></div>
+</section>
+
+<section class="card">
+  <h2>解析 <small>端末内で実行</small></h2><div class="row"><label>エンジン <select id="engineChoice"><option value="simple">簡易AI</option><option value="mini">つようら王11mini</option><option value="micro">つようら王11micro</option></select></label></div><p id="isolationNotice" class="small"></p>
+  <div class="row">
+    <label id="simpleDepth">読みの深さ <select id="thinkDepth"><option value="1">1手</option><option value="2" selected>2手</option></select></label>
+    <label id="wasmDuration" hidden>解析時間 <select id="wasmTime"><option value="1000">1秒</option><option value="3000" selected>3秒</option><option value="10000">10秒</option></select></label><button id="analyzeBtn" class="primary">解析開始</button>
+    <button id="stopBtn">停止</button>
+  </div>
+  <div id="candArea"><p class="small">候補手はここに表示されます。</p></div>
+  <div class="row">
+    <button id="playCandBtn" disabled>選択した候補手を指す</button>
+    <button id="pvBranchBtn" disabled>読み筋を分岐に追加</button>
+    <button id="pvHeadBtn" disabled>先頭4手のみ追加</button>
+  </div>
+</section>
+
+
+<section class="card">
+  <h2>指定手順・手順入力</h2>
+  <div class="row">
+    <input type="text" id="seqInput" placeholder="指定手順（空白区切り・* はAIに任せる）" style="flex:1;min-width:180px;">
+    <button id="seqBtn" class="primary">指定手順へ進む</button>
+  </div>
+  <textarea id="jpInput" rows="3" placeholder="日本語表記 ▲7六歩 △同歩 5八金右 2二角成 / USI 7g7f P*5e、空白区切り"></textarea>
+  <div class="row">
+    <button id="jpCurrentBtn">現在局面から入力</button>
+    <button id="jpRootBtn">開始局面から入力</button>
+    <button id="jpVerifyBtn">検証のみ</button>
+  </div>
+  <div class="row">
+    <label>プリセット <select id="presetSel"></select></label>
+    <button id="presetBtn">開始局面から適用</button>
+  </div>
+  <div class="row">
+    <input type="text" id="startSfen" placeholder="開始SFEN" style="flex:1;min-width:180px;">
+    <button id="startSfenBtn">この局面から開始</button>
+  </div>
+</section>
+
+<section class="card">
+  <h2>研究ファイル</h2>
+  <div class="row">
+    <button id="navRoot" aria-label="最初">|◀</button>
+    <button id="navPrev" aria-label="前へ">◀</button>
+    <button id="navNext" aria-label="次へ">▶</button>
+    <button id="navEnd" aria-label="最後">▶|</button>
+    <span id="moveLabel"></span>
+  </div>
+  <div id="sessionList"></div>
+  <div class="row">
+    <button id="exportBtn">USI棋譜を書き出す</button>
+    <button id="importBtn">USI棋譜を読み込む</button>
+    <label>棋譜ファイル <input id="recordFile" type="file" accept=".sfen,.txt,text/plain"></label>
+  </div>
+  <textarea id="usiText" rows="3" placeholder="USI棋譜（本筋の手順）"></textarea>
+  <div class="row">
+    <input type="text" id="memoInput" placeholder="この局面のメモ" style="flex:1;min-width:160px;">
+    <button id="memoBtn">メモ保存</button>
+  </div>
+</section>
+
+<div id="statusBar">準備中…</div>
+
+<dialog id="promoteDialog">
+  <p style="margin-top:0;">成りますか？</p>
+  <div class="row" style="justify-content:flex-end;">
+    <button id="promoteNo">不成</button>
+    <button id="promoteYes" class="primary">成る</button>
+  </div>
+</dialog>
+
+<script src="rules.js"></script>
+<script>
+"use strict";
+/* ================= 日本語表記 ================= */
+function rightLeftSuffix(pos, piece, src, dst){
+  const rivals = [];
+  for (const [k2, p2] of pos.board) {
+    if (p2.owner !== piece.owner || p2.kind !== piece.kind || p2.promoted !== piece.promoted) continue;
+    const s2 = k2.split(",").map(Number);
+    if (pos.canMoveTo(p2, s2, dst)) rivals.push(s2[0]);
+  }
+  if (rivals.length < 2 || new Set(rivals).size < 2) return "";
+  const rightFile = piece.owner === "b" ? Math.min(...rivals) : Math.max(...rivals);
+  const leftFile  = piece.owner === "b" ? Math.max(...rivals) : Math.min(...rivals);
+  if (src[0] === rightFile) return "右";
+  if (src[0] === leftFile) return "左";
+  return "";
+}
+function usiToJapanese(pos, usi, lastDest){
+  const mark = pos.turn === "b" ? "▲" : "△";
+  if (!usi) return "";
+  if (usi.includes("*")) {
+    const kind = usi[0].toUpperCase();
+    const dst = moveDestination(usi);
+    if (!dst) return mark + usi;
+    return mark + dst[0] + RANK_KANJI[dst[1]] + KANJI[kind] + "打";
+  }
+  const core = usi.endsWith("+") ? usi.slice(0,-1) : usi;
+  if (core.length !== 4) return mark + usi;
+  const src = [parseInt(core[0],10), LETTER_TO_RANK[core[1]]];
+  const dst = [parseInt(core[2],10), LETTER_TO_RANK[core[3]]];
+  const piece = pos.board.get(key(src[0],src[1]));
+  if (!piece) return mark + usi;
+  const coord = (lastDest && lastDest[0] === dst[0] && lastDest[1] === dst[1])
+    ? "同" : dst[0] + RANK_KANJI[dst[1]];
+  let text = mark + coord + pieceKanji(piece);
+  text += rightLeftSuffix(pos, piece, src, dst);
+  if (usi.endsWith("+")) text += "成";
+  else {
+    const canP = !piece.promoted && PROMOTABLE.includes(piece.kind) &&
+      (inPromoZone(piece.owner, src[1]) || inPromoZone(piece.owner, dst[1]));
+    if (canP) text += "不成";
+  }
+  return text;
+}
+const JP_PIECE_NAMES = [
+  ["成香","L",true],["成桂","N",true],["成銀","S",true],["成金","GS",true],
+  ["歩","P",false],["香","L",false],["桂","N",false],["銀","S",false],
+  ["金","G",false],["角","B",false],["飛","R",false],["玉","K",false],["王","K",false],
+  ["と","P",true],["馬","B",true],["龍","R",true],["竜","R",true],
+];
+function pieceMatches(piece, kind, promoted){
+  if (kind === "GS") return piece.promoted && ["P","L","N","S"].includes(piece.kind);
+  return piece.kind === kind && piece.promoted === promoted;
+}
+/* 戻り値: [usi, ""] / [null, 理由] */
+function parseJapaneseMove(pos, token, lastDest){
+  if (typeof token !== "string") return [null, "手が文字列ではありません"];
+  let t = token.trim().replace(/[\s　]/g, "");
+  for (const [z,h] of Object.entries(FULLWIDTH_DIGITS)) t = t.split(z).join(h);
+  while (t && "▲△☗☖".includes(t[0])) t = t.slice(1);
+  if (!t) return [null, "空の手です"];
+  let dest, rest;
+  if (t.startsWith("同")) {
+    if (!lastDest) return [null, "「同」の行き先（前手の着地点）が分かりません"];
+    dest = lastDest; rest = t.slice(1);
+  } else {
+    if (t.length < 3 || !"123456789".includes(t[0]) || !(t[1] in RANK_FROM_KANJI))
+      return [null, "着地点を解釈できません: " + token];
+    dest = [parseInt(t[0],10), RANK_FROM_KANJI[t[1]]]; rest = t.slice(2);
+  }
+  let name = null, kind = null, promoted = null;
+  for (const [cn, ck, cp] of JP_PIECE_NAMES) {
+    if (rest.startsWith(cn)) { name = cn; kind = ck; promoted = cp; break; }
+  }
+  if (name === null) return [null, "駒名を解釈できません: " + token];
+  let suffix = rest.slice(name.length);
+  const isDrop = suffix.includes("打");
+  suffix = suffix.split("打").join("");
+  let promoteSpec = null;
+  if (suffix.includes("不成")) { promoteSpec = false; suffix = suffix.split("不成").join(""); }
+  else if (suffix.includes("成")) { promoteSpec = true; suffix = suffix.split("成").join(""); }
+  const hints = [...suffix].filter(ch => "右左".includes(ch));
+  let candidates = [];
+  if (isDrop) {
+    if (HAND_ORDER.includes(kind)) {
+      const usi = kind + "*" + dest[0] + RANK_LETTER[dest[1]-1];
+      const trial = pos.clone();
+      try { trial.applyUsi(usi); candidates.push(usi); } catch {}
+    }
+  } else {
+    for (const [k2, piece] of pos.board) {
+      if (piece.owner !== pos.turn || !pieceMatches(piece, kind, promoted)) continue;
+      const [sf, sr] = k2.split(",").map(Number);
+      for (const prom of [false, true]) {
+        if (promoteSpec !== null && prom !== promoteSpec) continue;
+        const usi = sf + RANK_LETTER[sr-1] + dest[0] + RANK_LETTER[dest[1]-1] + (prom ? "+" : "");
+        const trial = pos.clone();
+        try { trial.applyUsi(usi); candidates.push(usi); } catch {}
+      }
+    }
+  }
+  candidates = [...new Set(candidates)].sort();
+  if (!candidates.length) return [null, "「" + token + "」に該当する手がありません"];
+  if (!isDrop && promoteSpec === null) {
+    const bases = new Set(candidates.map(c => c.replace(/\+$/,"")));
+    for (const base of bases)
+      if (candidates.includes(base) && candidates.includes(base + "+"))
+        return [null, "「" + token + "」は成/不成が指定されておらず曖昧です（成 または 不成 を付けてください）"];
+  }
+  if (candidates.length > 1 && hints.length) {
+    const files = {};
+    for (const usi of candidates) (files[usi[0]] ||= []).push(usi);
+    if (Object.keys(files).length > 1) {
+      const ks = Object.keys(files).map(Number);
+      if (hints.includes("右")) candidates = files[String(pos.turn === "b" ? Math.min(...ks) : Math.max(...ks))];
+      else if (hints.includes("左")) candidates = files[String(pos.turn === "b" ? Math.max(...ks) : Math.min(...ks))];
+    }
+  }
+  if (candidates.length > 1)
+    return [null, "「" + token + "」は複数の手に該当し曖昧です: " + candidates.join(" ")];
+  return [candidates[0], ""];
+}
+function pvToJapanese(pos, pv){
+  const work = pos.clone(); const out = []; let lastDest = null;
+  for (const move of pv || []) {
+    out.push(usiToJapanese(work, move, lastDest));
+    try { lastDest = moveDestination(move); work.applyUsi(move); }
+    catch { break; }
+  }
+  return out;
+}
+const USI_MOVE_RE = /^([1-9][a-i][1-9][a-i]\+?|[PLNSGBR]\*[1-9][a-i])$/;
+function tokenToUsi(pos, token, lastDest){
+  if (USI_MOVE_RE.test(token)) return [token, ""];
+  return parseJapaneseMove(pos, token, lastDest);
+}
+
+/* ================= 棋譜ツリー ================= */
+let nodeSeq = 1;
+class MoveNode {
+  constructor(move, sfen, parent){
+    this.id = nodeSeq++; this.move = move; this.sfen = sfen;
+    this.parent = parent || null; this.children = []; this.memo = "";
+  }
+  addChild(move, sfen){
+    for (const c of this.children) if (c.move === move) return c;
+    const n = new MoveNode(move, sfen, this); this.children.push(n); return n;
+  }
+  depth(){ let d = 0, n = this; while (n.parent) { d++; n = n.parent; } return d; }
+  pathMoves(){ const ms = []; let n = this; while (n && n.move) { ms.push(n.move); n = n.parent; } return ms.reverse(); }
+  *iter(){ yield this; for (const c of this.children) yield* c.iter(); }
+}
+function nodeToDict(n){
+  return {move:n.move, sfen:n.sfen, memo:n.memo, children:n.children.map(nodeToDict)};
+}
+function nodeFromDict(d, parent){
+  const n = new MoveNode(d.move, d.sfen, parent || null);
+  n.memo = d.memo || "";
+  n.children = (d.children || []).map(c => nodeFromDict(c, n));
+  return n;
+}
+
+/* ================= アプリ状態 ================= */
+const PRESETS = {
+  "矢倉（入り口）": ["7g7f","8c8d","6i7h","8d8e","7i6h","3c3d"],
+  "四間飛車（入り口）": ["7g7f","3c3d","6g6f","8c8d","2h6h","8d8e"],
+  "中飛車（入り口）": ["7g7f","3c3d","5g5f","8c8d","2h5h","8d8e"],
+  "相掛かり（入り口）": ["2g2f","8c8d","2f2e","8d8e","6i7h","4a3b","2e2d","2c2d","2h2d"],
+};
+const START_LABEL = "開始局面";
+let startSfen = STARTPOS_SFEN;
+let treeRoot = new MoveNode(null, startSfen, null);
+let current = treeRoot;
+let flipped = false;
+let selected = null;          // {type:'sq', f, r} | {type:'hand', owner, kind}
+let pendingPromote = null;    // {baseUsi}
+let candidates = [];          // 直近の解析結果
+let selectedCand = -1;
+let aiVsAiTimer = null;
+let engineBusy = false;
+
+const $ = id => document.getElementById(id);
+function setStatus(msg){ $("statusBar").textContent = msg; }
+function currentPos(){ return Position.fromSfen(current.sfen); }
+function nodeLabel(node){
+  if (!node.move) return START_LABEL;
+  const parent = node.parent;
+  const posBefore = Position.fromSfen(parent.sfen);
+  const path = node.pathMoves();
+  let lastDest = null;
+  if (path.length >= 2) lastDest = moveDestination(path[path.length - 2]);
+  let label = node.depth() + "手 " + usiToJapanese(posBefore, node.move, lastDest) + " (" + node.move + ")";
+  if (parent && parent.children.length > 1 && parent.children[0] !== node) label += " [分岐]";
+  return label;
+}
+function replayTo(node){ return Position.fromSfen(node.sfen); }
+
+/* 着手してツリーを進める。成功したら true */
+function playMove(usi, opts = {}){
+  const pos = currentPos();
+  const trial = pos.clone();
+  try { trial.applyUsi(usi); }
+  catch (e) { if (!opts.quiet) setStatus("指せません: " + e.message); return false; }
+  const child = current.addChild(usi, trial.toSfen());
+  current = child;
+  afterPositionChange();
+  return true;
+}
+function jumpTo(node){
+  current = node; selected = null;
+  afterPositionChange();
+}
+function afterPositionChange(){
+  renderAll();
+  persistSession();
+  checkGameEnd();
+  maybeAutoReply();
+}
+function checkGameEnd(){
+  const pos = currentPos();
+  const winner = gameResult(pos);
+  if (winner) {
+    setStatus("詰みです。" + (winner === "b" ? "先手" : "後手") + "の勝ちです");
+    stopAiVsAi();
+    return true;
+  }
+  return false;
+}
+
+/* ================= 描画 ================= */
+function renderAll(){
+  renderBoard(); renderKifu(); renderInfo();
+}
+function displaySquare(f, r){ // 画面上の (列,行) を実座標へ
+  return flipped ? [10 - f, 10 - r] : [f, r];
+}
+function renderBoard(){
+  const pos = currentPos();
+  const boardEl = $("board");
+  boardEl.innerHTML = "";
+  const lastDest = current.move ? moveDestination(current.move) : null;
+  const dests = selected ? legalishDests() : new Set();
+  for (let vr = 0; vr < 9; vr++) for (let vf = 0; vf < 9; vf++) {
+    const f = flipped ? vf + 1 : 9 - vf;
+    const r = flipped ? 9 - vr : vr + 1;
+    const div = document.createElement("div");
+    div.className = "sq";
+    if (current.move && current.move[1] !== "*" && Number(current.move[0]) === f && LETTER_TO_RANK[current.move[1]] === r) div.classList.add("from");
+    if (lastDest && lastDest[0] === f && lastDest[1] === r) div.classList.add("last");
+    if (selected && selected.type === "sq" && selected.f === f && selected.r === r) div.classList.add("sel");
+    if (dests.has(key(f, r))) div.classList.add("dest");
+    const p = pos.board.get(key(f, r));
+    if (p) {
+      const span = document.createElement("span");
+      span.className = "piece" + (p.owner === "w" ? " gote" : "") + (p.promoted ? " prom" : "") +
+                       (pieceKanji(p).length >= 2 ? " long" : "");
+      span.textContent = pieceKanji(p);
+      if (flipped) span.style.transform = p.owner === "w" ? "rotate(0deg)" : "rotate(180deg)";
+      div.appendChild(span);
+    }
+    div.addEventListener("click", () => onSquareTap(f, r));
+    boardEl.appendChild(div);
+  }
+  renderHand("b"); renderHand("w");
+}
+function renderHand(owner){
+  const pos = currentPos();
+  const el = owner === "b"
+    ? (flipped ? $("handTop") : $("handBottom"))
+    : (flipped ? $("handBottom") : $("handTop"));
+  el.innerHTML = "";
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = (owner === "b" ? "先手 ▲" : "後手 △") + " 持駒";
+  el.appendChild(who);
+  const kinds = HAND_ORDER.filter(k => (pos.hands[owner][k]||0) > 0);
+  if (!kinds.length) {
+    const s = document.createElement("span"); s.className = "chip none"; s.textContent = "なし";
+    el.appendChild(s); return;
+  }
+  for (const kind of kinds) {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (selected && selected.type === "hand" && selected.owner === owner && selected.kind === kind ? " sel" : "");
+    chip.textContent = KANJI[kind] + "×" + pos.hands[owner][kind];
+    chip.addEventListener("click", () => onHandTap(owner, kind));
+    el.appendChild(chip);
+  }
+}
+function legalishDests(){
+  const pos = currentPos(); const out = new Set();
+  if (!selected) return out;
+  for (const usi of pos.pseudoMoves()) {
+    if (selected.type === "hand") {
+      if (usi.startsWith(selected.kind + "*")) { const d = moveDestination(usi); out.add(key(d[0], d[1])); }
+    } else {
+      const src = [parseInt(usi[0],10), LETTER_TO_RANK[usi[1]]];
+      if (src[0] === selected.f && src[1] === selected.r) { const d = moveDestination(usi); out.add(key(d[0], d[1])); }
+    }
+  }
+  return out;
+}
+function renderKifu(){
+  const positions = [];
+  let nextCol = 1;
+  (function walk(node, col){
+    positions.push([node, node.depth(), col]);
+    node.children.forEach((ch, i) => {
+      if (i === 0) walk(ch, col); else walk(ch, nextCol++);
+    });
+  })(treeRoot, 0);
+  const rows = Math.max(...positions.map(p => p[1])) + 1;
+  const cols = Math.max(...positions.map(p => p[2])) + 1;
+  const inner = $("kifuInner");
+  inner.style.width = (cols * 208 + 12) + "px";
+  inner.style.height = (rows * 24 + 8) + "px";
+  inner.innerHTML = "";
+  for (const [node, r, c] of positions) {
+    const div = document.createElement("div");
+    div.className = "kcell" + (node === current ? " cur" : "");
+    div.style.left = (6 + c * 208) + "px";
+    div.style.top = (4 + r * 24) + "px";
+    div.textContent = nodeLabel(node);
+    div.addEventListener("click", () => { if (node !== current) jumpTo(node); });
+    inner.appendChild(div);
+  }
+  const scroll = $("kifuScroll");
+  const cur = positions.find(p => p[0] === current);
+  if (cur) {
+    scroll.scrollLeft = Math.max(0, cur[2] * 208 - 12);
+    scroll.scrollTop = Math.max(0, cur[1] * 24 - 48);
+  }
+}
+function renderInfo(){
+  const pos = currentPos();
+  $("sfenText").textContent = current.sfen;
+  const d = current.depth();
+  $("moveLabel").textContent = d === 0 ? "開始局面" :
+    d + "手目まで " + (pos.turn === "b" ? "先手番" : "後手番");
+  $("memoInput").value = current.memo || "";
+}
+</script>
+<script>
+"use strict";
+/* ================= 盤面タップ操作 ================= */
+function onSquareTap(f, r){
+  const pos = currentPos();
+  if (selected) {
+    const dests = legalishDests();
+    if (dests.has(key(f, r))) { attemptMoveTo(f, r); return; }
+  }
+  const p = pos.board.get(key(f, r));
+  if (p && p.owner === pos.turn) { selected = {type:"sq", f, r}; }
+  else selected = null;
+  renderBoard();
+}
+function onHandTap(owner, kind){
+  const pos = currentPos();
+  if (owner !== pos.turn) { selected = null; renderBoard(); return; }
+  if (selected && selected.type === "hand" && selected.kind === kind) selected = null;
+  else selected = {type:"hand", owner, kind};
+  renderBoard();
+}
+function attemptMoveTo(f, r){
+  const pos = currentPos();
+  let base = null;
+  if (selected.type === "hand") base = selected.kind + "*" + f + RANK_LETTER[r-1];
+  else base = selected.f + RANK_LETTER[selected.r-1] + f + RANK_LETTER[r-1];
+  const piece = selected.type === "sq" ? pos.board.get(key(selected.f, selected.r)) : null;
+  const canP = piece && !piece.promoted && PROMOTABLE.includes(piece.kind) &&
+    (inPromoZone(piece.owner, selected.r) || inPromoZone(piece.owner, r));
+  const forced = piece && !piece.promoted && deadRanks(piece.owner, piece.kind).includes(r);
+  selected = null;
+  if (canP && !forced) {
+    pendingPromote = {baseUsi: base};
+    $("promoteDialog").showModal();
+    renderBoard();
+    return;
+  }
+  if (playMove(canP && forced ? base + "+" : base)) return;
+  renderBoard();
+}
+$("promoteYes").addEventListener("click", () => {
+  $("promoteDialog").close();
+  if (pendingPromote) playMove(pendingPromote.baseUsi + "+");
+  pendingPromote = null;
+});
+$("promoteNo").addEventListener("click", () => {
+  $("promoteDialog").close();
+  if (pendingPromote) playMove(pendingPromote.baseUsi);
+  pendingPromote = null;
+});
+$("navRoot").addEventListener("click", () => jumpTo(treeRoot));
+$("navPrev").addEventListener("click", () => { if (current.parent) jumpTo(current.parent); });
+$("navNext").addEventListener("click", () => { if (current.children.length) jumpTo(current.children[0]); });
+$("navEnd").addEventListener("click", () => { let n = current; while (n.children.length) n = n.children[0]; jumpTo(n); });
+
+const engine = {
+  ready: typeof Worker === "function",
+  worker: null,
+  pending: null,
+  runSearch(sfen, count) {
+    if (!this.ready) return Promise.reject(new Error("この環境では簡易AIを起動できません"));
+    if (this.pending) return Promise.reject(new Error("探索中です"));
+    const startedAt = current;
+    return new Promise((resolve, reject) => {
+      const worker = new Worker("engine-worker.js");
+      this.worker = worker;
+      this.pending = reject;
+      const finish = () => { worker.terminate(); this.worker = null; this.pending = null; };
+      worker.onmessage = ({data}) => {
+        finish();
+        if (data.error) reject(new Error(data.error));
+        else if (startedAt !== current) reject(new Error("局面が変わったため探索を終了しました"));
+        else resolve(data);
+      };
+      worker.onerror = () => { finish(); reject(new Error("簡易AIを読み込めませんでした")); };
+      worker.postMessage({sfen, count, depth: Number($("thinkDepth").value)});
+    });
+  },
+  stopSearch() {
+    if (!this.worker) return;
+    this.worker.terminate();
+    const reject = this.pending;
+    this.worker = this.pending = null;
+    reject(new Error("探索を停止しました"));
+  },
+};
+
+/* ================= 解析 ================= */
+function scoreText(score, turn){
+  if (!score) return "";
+  let v = score.value;
+  if (turn === "w") v = -v;                    // 先手視点へ変換
+  if (score.kind === "mate") {
+    if (v > 0) return "+詰み" + v + "手";
+    if (v < 0) return "-詰み" + (-v) + "手";
+    return "詰み0手";
+  }
+  return (v > 0 ? "+" : "") + v;
+}
+$("analyzeBtn").addEventListener("click", async () => {
+  if (engineBusy) return;
+  engineBusy = true;
+  $("analyzeBtn").disabled = true;
+  setStatus("解析中…");
+  const pos = currentPos();
+  try {
+    const res = await engine.runSearch(current.sfen, 5);
+    candidates = res.list;
+    selectedCand = candidates.length ? 0 : -1;
+    renderCandidates();
+    setStatus("解析が終わりました（最善手 " + (res.best || "-") + "）");
+  } catch (e) { setStatus(e.message); }
+  engineBusy = false;
+  $("analyzeBtn").disabled = false;
+});
+$("stopBtn").addEventListener("click", () => engine.stopSearch());
+function renderCandidates(){
+  const pos = currentPos();
+  const area = $("candArea");
+  if (!candidates.length) { area.innerHTML = '<p class="small">候補手が得られませんでした。</p>'; return; }
+  let html = '<table class="cand"><tr><th>#</th><th>候補手</th><th>評価値</th><th>深さ</th><th>読み筋</th></tr>';
+  candidates.forEach((c, i) => {
+    const jp = c.pv.length ? usiToJapanese(pos, c.pv[0], null) : "-";
+    const pvJp = pvToJapanese(pos, c.pv).join(" ");
+    html += "<tr data-i='" + i + "'" + (i === selectedCand ? " class='sel'" : "") + ">" +
+      "<td>" + c.multipv + "</td><td><b>" + jp + "</b></td><td>" + scoreText(c.score, pos.turn) +
+      "</td><td>" + c.depth + "</td><td class='pv'>" + pvJp + "</td></tr>";
+  });
+  html += "</table><p class='small'>評価値は先手視点です。行をタップで選択。</p>";
+  area.innerHTML = html;
+  area.querySelectorAll("tr[data-i]").forEach(tr =>
+    tr.addEventListener("click", () => { selectedCand = parseInt(tr.dataset.i, 10); renderCandidates(); }));
+  const has = selectedCand >= 0;
+  $("playCandBtn").disabled = !has;
+  $("pvBranchBtn").disabled = !has;
+  $("pvHeadBtn").disabled = !has;
+}
+$("playCandBtn").addEventListener("click", () => {
+  const c = candidates[selectedCand];
+  if (c && c.pv.length) playMove(c.pv[0]);
+});
+function addPvBranch(headOnly){
+  const c = candidates[selectedCand];
+  if (!c) return;
+  const moves = headOnly ? c.pv.slice(0, 4) : c.pv;
+  const from = current;
+  const pos = currentPos();
+  // 現在ノードからPVを子として辿る（既存分岐があれば再利用）
+  let node = from; const work = pos.clone(); let added = 0;
+  for (const mv of moves) {
+    try { work.applyUsi(mv); } catch { break; }
+    node = node.addChild(mv, work.toSfen()); added++;
+  }
+  renderKifu(); persistSession();
+  setStatus("読み筋 " + added + " 手を分岐として追加しました");
+}
+$("pvBranchBtn").addEventListener("click", () => addPvBranch(false));
+$("pvHeadBtn").addEventListener("click", () => addPvBranch(true));
+
+/* ================= 自由対局 ================= */
+async function engineMoveOnce(movetimeMs){
+  const res = await engine.runSearch(current.sfen, 1, "go movetime " + movetimeMs);
+  if (!res.best || res.best === "resign") {
+    setStatus("投了です。" + (currentPos().turn === "b" ? "後手" : "先手") + "の勝ちです");
+    stopAiVsAi();
+    return false;
+  }
+  return playMove(res.best, {quiet: true});
+}
+$("engineMoveBtn").addEventListener("click", async () => {
+  if (engineBusy) return;
+  engineBusy = true;
+  try { await engineMoveOnce(1000); }
+  catch (e) { setStatus(e.message); }
+  engineBusy = false;
+});
+function aiSideTurn(){
+  const v = $("aiSide").value;
+  const turn = currentPos().turn;
+  if (v === "both") return true;
+  return v === turn;
+}
+let batchApplying = false;
+function maybeAutoReply(){
+  if (batchApplying || aiVsAiTimer) return;
+  if (!$("autoReply").checked || engineBusy) return;
+  if (!aiSideTurn()) return;
+  if (gameResult(currentPos())) return;
+  engineBusy = true;
+  engineMoveOnce(1000)
+    .catch(e => setStatus(e.message))
+    .finally(() => { engineBusy = false; });
+}
+$("autoReply").addEventListener("change", () => maybeAutoReply());
+$("aiVsAiBtn").addEventListener("click", () => {
+  if (aiVsAiTimer) return;
+  if (!engine.ready) { setStatus("エンジンが準備できていません"); return; }
+  const maxPlies = parseInt($("aiMax").value, 10) || 256;
+  const intervalMs = Math.max(0, (parseFloat($("aiInterval").value) || 0) * 1000);
+  let plies = 0;
+  setStatus("AI同士の対局を開始しました");
+  const step = async () => {
+    if (!aiVsAiTimer) return;
+    if (plies >= maxPlies || gameResult(currentPos())) {
+      stopAiVsAi();
+      setStatus(gameResult(currentPos()) ? "対局終了" : "最大手数に到達しました");
+      return;
+    }
+    engineBusy = true;
+    const ok = await engineMoveOnce(1000).catch(() => false);
+    engineBusy = false;
+    if (!ok) { stopAiVsAi(); return; }
+    plies++;
+    if (aiVsAiTimer) aiVsAiTimer = setTimeout(step, intervalMs);
+  };
+  aiVsAiTimer = setTimeout(step, 0);
+});
+function stopAiVsAi(){
+  if (aiVsAiTimer) { clearTimeout(aiVsAiTimer); aiVsAiTimer = null; }
+}
+$("aiStopBtn").addEventListener("click", () => { stopAiVsAi(); engine.stopSearch(); setStatus("停止しました"); });
+
+/* ================= 指定手順・手順入力 ================= */
+async function applyTokenSequence(tokens, fromNode){
+  batchApplying = true;
+  try {
+    jumpTo(fromNode);
+    let lastDest = null;
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      if (tok === "*") {
+        if (!engine.ready) { setStatus((i+1) + "手目が * ですが、エンジンが準備できていません。* は飛ばしません"); return false; }
+        const ok = await engineMoveOnce(1000);
+        if (!ok) { setStatus((i+1) + "手目（*）でエンジンの手が得られませんでした"); return false; }
+        lastDest = moveDestination(current.move);
+        continue;
+      }
+      const pos = currentPos();
+      const [usi, reason] = tokenToUsi(pos, tok, lastDest);
+      if (!usi) { setStatus((i+1) + "手目で停止しました: " + reason); return false; }
+      if (!playMove(usi, {quiet: true})) {
+        const p2 = currentPos(); const t2 = p2.clone();
+        let why = "";
+        try { t2.applyUsi(usi); } catch (e) { why = e.message; }
+        setStatus((i+1) + "手目（" + tok + "）が指せません: " + why);
+        return false;
+      }
+      lastDest = moveDestination(usi);
+    }
+    return true;
+  } finally {
+    batchApplying = false;
+    maybeAutoReply();
+  }
+}
+function splitTokens(text){
+  return text.split(/[\s,、]+/).map(s => s.trim()).filter(Boolean);
+}
+$("seqBtn").addEventListener("click", async () => {
+  const tokens = splitTokens($("seqInput").value);
+  if (!tokens.length) { setStatus("指定手順が空です"); return; }
+  if (await applyTokenSequence(tokens, current)) setStatus("指定手順を適用しました");
+});
+async function processJpInput(mode){
+  const tokens = splitTokens($("jpInput").value);
+  if (!tokens.length) { setStatus("入力が空です"); return; }
+  if (mode === "verify") {
+    const work = (mode === "verify" ? currentPos() : currentPos());
+    let lastDest = current.move ? moveDestination(current.move) : null;
+    for (let i = 0; i < tokens.length; i++) {
+      const [usi, reason] = tokenToUsi(work, tokens[i], lastDest);
+      if (!usi) { setStatus("検証: " + (i+1) + "手目で問題があります: " + reason); return; }
+      try { work.applyUsi(usi); } catch (e) { setStatus("検証: " + (i+1) + "手目 " + e.message); return; }
+      lastDest = moveDestination(usi);
+    }
+    setStatus("検証OK: " + tokens.length + "手すべて指せます（追加はしていません）");
+    return;
+  }
+  const from = mode === "root" ? treeRoot : current;
+  if (await applyTokenSequence(tokens, from)) setStatus("手順を入力しました");
+}
+$("jpCurrentBtn").addEventListener("click", () => processJpInput("current"));
+$("jpRootBtn").addEventListener("click", () => processJpInput("root"));
+$("jpVerifyBtn").addEventListener("click", () => processJpInput("verify"));
+$("presetBtn").addEventListener("click", async () => {
+  const name = $("presetSel").value;
+  const moves = PRESETS[name] || [];
+  batchApplying = true;
+  jumpTo(treeRoot);
+  for (const mv of moves) if (!playMove(mv, {quiet:true})) { batchApplying = false; setStatus("プリセット適用で停止しました"); return; }
+  batchApplying = false;
+  setStatus("プリセット「" + name + "」を適用しました");
+  maybeAutoReply();
+});
+$("startSfenBtn").addEventListener("click", () => {
+  const sfen = $("startSfen").value.trim();
+  try { Position.fromSfen(sfen); } catch (e) { setStatus("SFENが不正です: " + e.message); return; }
+  newStudy(sfen);
+  setStatus("指定した局面から開始しました");
+});
+
+/* ================= 研究ファイル ================= */
+function sessionData(){
+  return {version: 1, start_sfen: startSfen, tree: nodeToDict(treeRoot), cursor: current.pathMoves()};
+}
+function loadSessionData(data){
+  startSfen = data.start_sfen || STARTPOS_SFEN;
+  nodeSeq = 1;
+  treeRoot = nodeFromDict(data.tree, null);
+  current = treeRoot;
+  for (const move of data.cursor || []) {
+    const next = current.children.find(child => child.move === move);
+    if (!next) break;
+    current = next;
+  }
+  selected = null; candidates = []; selectedCand = -1;
+  renderAll(); renderCandidatesClear();
+}
+function renderCandidatesClear(){
+  candidates = []; selectedCand = -1;
+  $("candArea").innerHTML = '<p class="small">候補手はここに表示されます。</p>';
+  $("playCandBtn").disabled = true; $("pvBranchBtn").disabled = true; $("pvHeadBtn").disabled = true;
+}
+function newStudy(sfen){
+  startSfen = sfen || STARTPOS_SFEN;
+  nodeSeq = 1;
+  treeRoot = new MoveNode(null, startSfen, null);
+  current = treeRoot; selected = null;
+  renderAll(); renderCandidatesClear(); persistSession();
+}
+$("newBtn").addEventListener("click", () => { newStudy(STARTPOS_SFEN); setStatus("新しい研究を開始しました"); });
+const LS_AUTO = "shogilab-engine-test:auto";
+const LS_NAMED = "shogilab-engine-test:named";
+function persistSession(){
+  try { localStorage.setItem(LS_AUTO, JSON.stringify(sessionData())); } catch {}
+}
+function namedSessions(){
+  try { return JSON.parse(localStorage.getItem(LS_NAMED) || "{}"); } catch { return {}; }
+}
+function renderSessionList(){
+  const all = namedSessions();
+  const el = $("sessionList");
+  el.innerHTML = "";
+  const names = Object.keys(all);
+  if (!names.length) { el.innerHTML = '<p class="small">保存済みの研究はありません。</p>'; return; }
+  for (const name of names) {
+    const row = document.createElement("div"); row.className = "sessitem";
+    const label = document.createElement("span"); label.textContent = name;
+    const btns = document.createElement("span");
+    const open = document.createElement("button"); open.textContent = "開く";
+    open.addEventListener("click", () => { loadSessionData(all[name]); persistSession(); setStatus("「" + name + "」を開きました"); });
+    const ren = document.createElement("button"); ren.textContent = "名前変更";
+    ren.addEventListener("click", () => {
+      const newName = prompt("新しい名前", name);
+      if (!newName || newName === name) return;
+      const a = namedSessions();
+      if (a[newName] && !confirm("「" + newName + "」は既にあります。上書きしますか？")) return;
+      a[newName] = a[name]; delete a[name];
+      localStorage.setItem(LS_NAMED, JSON.stringify(a)); renderSessionList();
+      setStatus("「" + name + "」を「" + newName + "」に変更しました");
+    });
+    const del = document.createElement("button"); del.textContent = "削除";
+    del.addEventListener("click", () => {
+      const a = namedSessions(); delete a[name];
+      localStorage.setItem(LS_NAMED, JSON.stringify(a)); renderSessionList();
+    });
+    btns.append(open, " ", ren, " ", del);
+    row.append(label, btns);
+    el.appendChild(row);
+  }
+}
+$("saveBtn").addEventListener("click", () => {
+  const name = prompt("研究の名前", new Date().toLocaleString("ja-JP"));
+  if (!name) return;
+  const all = namedSessions(); all[name] = sessionData();
+  localStorage.setItem(LS_NAMED, JSON.stringify(all));
+  renderSessionList(); setStatus("「" + name + "」を保存しました");
+});
+$("exportBtn").addEventListener("click", () => {
+  let node = treeRoot; const moves = [];
+  while (node.children.length) { node = node.children[0]; moves.push(node.move); }
+  $("usiText").value = moves.join(" ");
+  setStatus("本筋をUSIで書き出しました");
+});
+function importRecord(text) {
+  if (engineBusy || batchApplying) throw new Error("処理が終わってから読み込んでください");
+  const record = text.trim().split(/\r?\n/).filter(Boolean).pop() || "";
+  if (!record) throw new Error("USI棋譜が空です");
+  const isStartpos = /^position\s+startpos(?:\s|$)/.test(record);
+  const initial = isStartpos ? STARTPOS_SFEN : startSfen;
+  const tokens = splitTokens(record.replace(/^position\s+startpos(?:\s+moves)?\s*/, ""));
+  if (tokens.length > 512) throw new Error("棋譜の読み込みは512手までです");
+  const position = Position.fromSfen(initial);
+  for (const token of tokens) {
+    if (!USI_MOVE_RE.test(token)) throw new Error("不明なUSI指し手 " + token);
+    position.applyUsi(token);
+  }
+  stopAiVsAi();
+  newStudy(initial);
+  let node = treeRoot;
+  const replay = Position.fromSfen(initial);
+  for (const move of tokens) {
+    replay.applyUsi(move);
+    node = node.addChild(move, replay.toSfen());
+  }
+  jumpTo(node);
+  setStatus(tokens.length + "手の棋譜を読み込みました");
+}
+$("importBtn").addEventListener("click", () => {
+  try { importRecord($("usiText").value); } catch (e) { setStatus(e.message); }
+});
+$("recordFile").addEventListener("change", async event => {
+  const file = event.target.files[0];
+  try {
+    if (!file) return;
+    if (file.size > 16 * 1024 * 1024) throw new Error("棋譜ファイルが大きすぎます");
+    importRecord(await file.text());
+  } catch (e) { setStatus(e.message); }
+  finally { event.target.value = ""; }
+});
+$("memoBtn").addEventListener("click", () => {
+  current.memo = $("memoInput").value;
+  persistSession(); setStatus("メモを保存しました");
+});
+/* ================= 起動 ================= */
+(function init(){
+  const sel = $("presetSel");
+  for (const name of Object.keys(PRESETS)) {
+    const o = document.createElement("option"); o.value = name; o.textContent = name; sel.appendChild(o);
+  }
+  let restored = false;
+  try {
+    const auto = localStorage.getItem(LS_AUTO);
+    if (auto) { loadSessionData(JSON.parse(auto)); restored = true; }
+  } catch {}
+  if (!restored) renderAll();
+  renderSessionList();
+  setStatus(restored ? "前回の研究を復元しました" : "研究を開始できます");
+  $("engineStatus").className = engine.ready ? "ready" : "error";
+  $("engineStatusText").textContent = engine.ready ? "簡易AI" : "盤面・棋譜モード";
+})();
+</script>
+<p class="small"><a href="engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js"></script></body>
+</html>
+
+
