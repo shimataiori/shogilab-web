@@ -55,11 +55,22 @@ const wasmEngine = {
   job:null,
   ready:false,
   variant:null,
+  release:Promise.resolve(),
   close(){
-    if (this.worker) this.worker.terminate();
+    const worker = this.worker;
+    const ready = this.ready;
     this.worker = null;
     this.ready = false;
     this.variant = null;
+    if (!worker) return;
+    if (!ready) { worker.terminate(); return; }
+    this.release = new Promise(resolve => {
+      const finish = () => {clearTimeout(timeout);worker.terminate();resolve();};
+      const timeout = setTimeout(finish, 1000);
+      worker.onmessage = ({data}) => {if(data.type === "closed") finish();};
+      worker.onerror = finish;
+      worker.postMessage({type:"shutdown"});
+    });
   },
   fail(error){
     const job = this.job;
@@ -84,15 +95,18 @@ const wasmEngine = {
       this.job = job;
       job.timeout = setTimeout(() => this.fail(new Error("エンジンの応答が時間内に届きませんでした")), 100000);
       if (this.ready) { this.search(); return; }
-      setEngineStatus("やねうら王を準備中…");
-      diagnostic(engineChoices[variant] + "の起動を開始");
+      this.release.then(() => {
+       if (this.job !== job) return;
+       setEngineStatus("やねうら王を準備中…");
+       diagnostic(engineChoices[variant] + "の起動を開始");
       try {
-        this.worker = new Worker("engine-test/wasm-worker.js");
+        this.worker = new Worker("wasm-worker.js?v=6");
         this.variant = variant;
         this.worker.onmessage = ({data}) => this.message(data);
         this.worker.onerror = event => this.fail(new Error(event.message || "やねうら王を起動できませんでした"));
         this.worker.postMessage({type:"init",variant});
       } catch (error) { this.fail(error); }
+      });
     });
   },
   send(line){this.worker.postMessage({type:"command",line});},
@@ -157,4 +171,5 @@ for (const [role, select] of [["analysis",choice],["play",opponentChoice]]) {
   });
 }
 setEngineStatus("対局: " + engineChoices[opponentChoice.value]);
+
 
