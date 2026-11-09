@@ -91,23 +91,44 @@ const wasmEngine = {
     const variant = role === "play" ? opponentChoice.value : choice.value;
     if (this.variant !== variant) this.close();
     return new Promise((resolve,reject) => {
-      const job = {sfen,count,role,variant,resolve,reject,startedAt:current,lines:new Map(),stopped:false};
+      const job = {sfen,count,role,variant,resolve,reject,startedAt:current,lines:new Map(),stopped:false,retried:false};
       this.job = job;
       job.timeout = setTimeout(() => this.fail(new Error("エンジンの応答が時間内に届きませんでした")), 100000);
       if (this.ready) { this.search(); return; }
-      this.release.then(() => {
-       if (this.job !== job) return;
-       setEngineStatus("やねうら王を準備中…");
-       diagnostic(engineChoices[variant] + "の起動を開始");
-      try {
-        this.worker = new Worker("wasm-worker.js?v=6");
-        this.variant = variant;
-        this.worker.onmessage = ({data}) => this.message(data);
-        this.worker.onerror = event => this.fail(new Error(event.message || "やねうら王を起動できませんでした"));
-        this.worker.postMessage({type:"init",variant});
-      } catch (error) { this.fail(error); }
-      });
+      this.release.then(() => this.start(job));
     });
+  },
+  start(job){
+    if (this.job !== job) return;
+    setEngineStatus("やねうら王を準備中…");
+    diagnostic(engineChoices[job.variant] + "の起動を開始");
+    const url = new URL("./wasm-worker.js?v=7", location.href);
+    if (job.retried) url.searchParams.set("retry", String(Date.now()));
+    try {
+      const worker = new Worker(url.href);
+      this.worker = worker;
+      this.variant = job.variant;
+      worker.onmessage = ({data}) => {
+        if (this.worker === worker) this.message(data);
+      };
+      worker.onerror = event => {
+        if (this.worker !== worker) return;
+        event.preventDefault();
+        this.startupFailure(event.message || "ブラウザから詳しいエラーが返りませんでした");
+      };
+      worker.postMessage({type:"init",variant:job.variant});
+    } catch (error) { this.startupFailure(error.message); }
+  },
+  startupFailure(detail){
+    const job = this.job;
+    if (job && !this.ready && !job.retried) {
+      job.retried = true;
+      diagnostic("起動失敗。エンジンを閉じて再試行します。 " + detail);
+      this.close();
+      setTimeout(() => this.start(job), 800);
+      return;
+    }
+    this.fail(new Error("やねうら王を起動できませんでした。 " + detail));
   },
   send(line){this.worker.postMessage({type:"command",line});},
   search(){
@@ -122,7 +143,7 @@ const wasmEngine = {
   },
   message(data){
     if (data.type === "log") { diagnostic(data.step); return; }
-    if (data.type === "error") { this.fail(new Error(data.message)); return; }
+    if (data.type === "error") { this.startupFailure(data.message); return; }
     if (data.type === "ready") {this.ready = true; this.search(); return;}
     const job = this.job;
     if (!job || data.type !== "line") return;
