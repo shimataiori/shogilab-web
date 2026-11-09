@@ -1,6 +1,7 @@
 "use strict";
 const engineChoices = {mini:"つようら王11mini",micro:"つようら王11micro"};
 const choice = document.getElementById("engineChoice");
+const opponentChoice = document.getElementById("opponentChoice");
 const isolationNotice = document.getElementById("isolationNotice");
 const productionScope = /\/shogilab-web\/(?:index\.html)?$/.test(location.pathname);
 const diagnostics = document.createElement("details");
@@ -53,10 +54,12 @@ const wasmEngine = {
   worker:null,
   job:null,
   ready:false,
+  variant:null,
   close(){
     if (this.worker) this.worker.terminate();
     this.worker = null;
     this.ready = false;
+    this.variant = null;
   },
   fail(error){
     const job = this.job;
@@ -68,24 +71,27 @@ const wasmEngine = {
     }
     this.close();
   },
-  run(sfen, count){
+  run(sfen, count, role){
     if (!isolationReady) {
       diagnostics.open = true;
       return Promise.reject(new Error("ブラウザの分離設定がまだ有効ではありません"));
     }
     if (this.job) return Promise.reject(new Error("探索中です"));
+    const variant = role === "play" ? opponentChoice.value : choice.value;
+    if (this.variant !== variant) this.close();
     return new Promise((resolve,reject) => {
-      const job = {sfen,count,resolve,reject,startedAt:current,lines:new Map(),stopped:false};
+      const job = {sfen,count,role,variant,resolve,reject,startedAt:current,lines:new Map(),stopped:false};
       this.job = job;
       job.timeout = setTimeout(() => this.fail(new Error("エンジンの応答が時間内に届きませんでした")), 100000);
       if (this.ready) { this.search(); return; }
       setEngineStatus("やねうら王を準備中…");
-      diagnostic(engineChoices[choice.value] + "の起動を開始");
+      diagnostic(engineChoices[variant] + "の起動を開始");
       try {
         this.worker = new Worker("engine-test/wasm-worker.js");
+        this.variant = variant;
         this.worker.onmessage = ({data}) => this.message(data);
         this.worker.onerror = event => this.fail(new Error(event.message || "やねうら王を起動できませんでした"));
-        this.worker.postMessage({type:"init",variant:choice.value});
+        this.worker.postMessage({type:"init",variant});
       } catch (error) { this.fail(error); }
     });
   },
@@ -93,7 +99,7 @@ const wasmEngine = {
   search(){
     const job = this.job;
     if (!job) return;
-    setEngineStatus(engineChoices[choice.value]);
+    setEngineStatus((job.role === "play" ? "対局: " : "解析: ") + engineChoices[job.variant]);
     clearTimeout(job.timeout);
     job.timeout = setTimeout(() => this.fail(new Error("解析が時間内に終わりませんでした")), 18000);
     this.send("setoption name MultiPV value " + job.count);
@@ -135,11 +141,20 @@ const wasmEngine = {
 };
 
 function setEngineStatus(message){document.getElementById("engineStatusText").textContent = message;}
-engine.runSearch = (sfen,count) => wasmEngine.run(sfen,count);
+engine.runSearch = (sfen,count,role) => wasmEngine.run(sfen,count,role);
 engine.stopSearch = () => wasmEngine.stop();
-choice.addEventListener("change", () => {
-  wasmEngine.fail(new Error("エンジンを切り替えました"));
-  setEngineStatus(engineChoices[choice.value]);
-  renderCandidatesClear();
-});
+for (const [role, select] of [["analysis",choice],["play",opponentChoice]]) {
+  const key = "shogilab:engine:" + role;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved === "mini" || saved === "micro") select.value = saved;
+  } catch {}
+  select.addEventListener("change", () => {
+    try { localStorage.setItem(key,select.value); } catch {}
+    if (wasmEngine.job && wasmEngine.job.role === role)
+      wasmEngine.fail(new Error("エンジンを切り替えました"));
+    if (role === "analysis") renderCandidatesClear();
+  });
+}
+setEngineStatus("対局: " + engineChoices[opponentChoice.value]);
 

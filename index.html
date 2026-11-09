@@ -97,7 +97,7 @@
 </div>
 
 <section class="card">
-  <h2>自由対局</h2>
+  <h2>自由対局</h2><div class="row"><label>対局エンジン <select id="opponentChoice"><option value="mini">つようら王11mini</option><option value="micro" selected>つようら王11micro</option></select></label></div>
   <div class="row">
     <button id="engineMoveBtn">エンジンに1手指させる</button>
     <label>AIの担当 <select id="aiSide">
@@ -120,7 +120,7 @@
 </section>
 
 <section class="card">
-  <h2>解析 <small>端末内で実行</small></h2><div class="row"><label>エンジン <select id="engineChoice"><option value="mini">つようら王11mini</option><option value="micro" selected>つようら王11micro</option></select></label></div><p id="isolationNotice" class="small"></p>
+  <h2>解析 <small>端末内で実行</small></h2><div class="row"><label>解析エンジン <select id="engineChoice"><option value="mini">つようら王11mini</option><option value="micro" selected>つようら王11micro</option></select></label></div><p id="isolationNotice" class="small"></p>
   <div class="row">
     
     <label id="wasmDuration">解析時間 <select id="wasmTime"><option value="1000">1秒</option><option value="3000" selected>3秒</option><option value="10000">10秒</option></select></label><button id="analyzeBtn" class="primary">解析開始</button>
@@ -606,7 +606,7 @@ $("analyzeBtn").addEventListener("click", async () => {
   setStatus("解析中…");
   const pos = currentPos();
   try {
-    const res = await engine.runSearch(current.sfen, 5);
+    const res = await engine.runSearch(current.sfen, 5, "analysis");
     candidates = res.list;
     selectedCand = candidates.length ? 0 : -1;
     renderCandidates();
@@ -661,7 +661,7 @@ $("pvHeadBtn").addEventListener("click", () => addPvBranch(true));
 
 /* ================= 自由対局 ================= */
 async function engineMoveOnce(movetimeMs){
-  const res = await engine.runSearch(current.sfen, 1, "go movetime " + movetimeMs);
+  const res = await engine.runSearch(current.sfen, 1, "play");
   if (!res.best || res.best === "resign") {
     setStatus("投了です。" + (currentPos().turn === "b" ? "後手" : "先手") + "の勝ちです");
     stopAiVsAi();
@@ -942,8 +942,9 @@ $("memoBtn").addEventListener("click", () => {
   $("engineStatusText").textContent = engine.ready ? "つようら王11micro" : "盤面・棋譜モード";
 })();
 </script>
-<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=4"></script></body>
+<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=5"></script></body>
 </html>
+
 
 
 
