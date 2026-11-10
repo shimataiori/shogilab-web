@@ -6,7 +6,7 @@ const isolationNotice = document.getElementById("isolationNotice");
 const productionScope = /\/shogilab-web\/(?:index\.html)?$/.test(location.pathname);
 const diagnostics = document.createElement("details");
 const diagnosticTitle = document.createElement("summary");
-diagnosticTitle.textContent = "起動の診断";
+diagnosticTitle.textContent = "エンジンの診断";
 const diagnosticText = document.createElement("pre");
 diagnosticText.style.whiteSpace = "pre-wrap";
 diagnostics.append(diagnosticTitle, diagnosticText);
@@ -16,7 +16,7 @@ function diagnostic(message) {
   diagnosticLines.push(message);
   diagnosticText.textContent = diagnosticLines.slice(-20).join("\n");
 }
-function showStartupError(message) {
+function showEngineError(message) {
   diagnostic(message);
   diagnostics.open = true;
   isolationNotice.textContent = message;
@@ -30,7 +30,7 @@ if (productionScope && navigator.serviceWorker) {
     if (crossOriginIsolated || !navigator.serviceWorker.controller) return;
     const url = new URL(location.href);
     if (url.searchParams.get("isolated") === "3") {
-      showStartupError("配信設定は読み込まれましたが、このタブで共有メモリーを使えません。");
+      showEngineError("配信設定は読み込まれましたが、このタブで共有メモリーを使えません。");
       return;
     }
     url.searchParams.set("isolated", "3");
@@ -42,7 +42,7 @@ if (productionScope && navigator.serviceWorker) {
     await navigator.serviceWorker.ready;
     diagnostic("配信設定が有効");
     reloadForIsolation();
-  }).catch(error => showStartupError("配信設定の登録に失敗しました。 " + error.message));
+  }).catch(error => showEngineError("配信設定の登録に失敗しました。 " + error.message));
 } else if (!navigator.serviceWorker) {
   diagnostic("Service Workerを利用できません");
 }
@@ -77,12 +77,12 @@ const wasmEngine = {
     this.job = null;
     if (job) {
       clearTimeout(job.timeout);
-      if (!job.stopped && !/停止|切り替え/.test(error.message)) showStartupError(error.message);
+      if (!job.stopped && !/停止|切り替え/.test(error.message)) showEngineError(error.message);
       job.reject(error);
     }
     this.close();
   },
-  run(sfen, count, role){
+  run(sfen, count, role, movetimeMs = Number(document.getElementById("wasmTime").value)){
     if (!isolationReady) {
       diagnostics.open = true;
       return Promise.reject(new Error("ブラウザの分離設定がまだ有効ではありません"));
@@ -91,7 +91,7 @@ const wasmEngine = {
     const variant = role === "play" ? opponentChoice.value : choice.value;
     if (this.variant !== variant) this.close();
     return new Promise((resolve,reject) => {
-      const job = {sfen,count,role,variant,resolve,reject,startedAt:current,lines:new Map(),stopped:false,retried:false};
+      const job = {sfen,count,role,variant,movetimeMs,resolve,reject,startedAt:current,lines:new Map(),stopped:false,retried:false};
       this.job = job;
       job.timeout = setTimeout(() => this.fail(new Error("エンジンの応答が時間内に届きませんでした")), 100000);
       if (this.ready) { this.search(); return; }
@@ -136,10 +136,11 @@ const wasmEngine = {
     if (!job) return;
     setEngineStatus((job.role === "play" ? "対局: " : "解析: ") + engineChoices[job.variant]);
     clearTimeout(job.timeout);
-    job.timeout = setTimeout(() => this.fail(new Error("解析が時間内に終わりませんでした")), 18000);
+    const action = job.role === "play" ? "指し手の探索" : "解析";
+    job.timeout = setTimeout(() => this.fail(new Error(action + "が時間内に終わりませんでした")), job.movetimeMs + 15000);
     this.send("setoption name MultiPV value " + job.count);
     this.send("position sfen " + job.sfen);
-    this.send("go movetime " + document.getElementById("wasmTime").value);
+    this.send("go movetime " + job.movetimeMs);
   },
   message(data){
     if (data.type === "log") { diagnostic(data.step); return; }
@@ -153,7 +154,10 @@ const wasmEngine = {
       this.job = null;
       if (job.stopped) job.reject(new Error("探索を停止しました"));
       else if (job.startedAt !== current) job.reject(new Error("局面が変わったため探索を終了しました"));
-      else job.resolve({best:line.split(/\s+/)[1],list:[...job.lines.values()].sort((a,b)=>a.multipv-b.multipv)});
+      else {
+        isolationNotice.textContent = "やねうら王は動作中です。";
+        job.resolve({best:line.split(/\s+/)[1],list:[...job.lines.values()].sort((a,b)=>a.multipv-b.multipv)});
+      }
       return;
     }
     const pv = line.match(/\bpv\s+(.+)$/);
@@ -176,7 +180,7 @@ const wasmEngine = {
 };
 
 function setEngineStatus(message){document.getElementById("engineStatusText").textContent = message;}
-engine.runSearch = (sfen,count,role) => wasmEngine.run(sfen,count,role);
+engine.runSearch = (sfen,count,role,movetimeMs) => wasmEngine.run(sfen,count,role,movetimeMs);
 engine.stopSearch = () => wasmEngine.stop();
 for (const [role, select] of [["analysis",choice],["play",opponentChoice]]) {
   const key = "shogilab:engine:" + role;

@@ -49,6 +49,7 @@
            background:#fff; color:#222; }
   button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   button:disabled { opacity:.45; }
+  #engineMoveBtn[aria-busy="true"] { background:#295e96; color:white; opacity:1; }
   select, input[type=text], input[type=number], textarea {
     font-size:16px; padding:8px; border:1px solid #c9c2b4; border-radius:8px; background:#fff; }
   textarea { width:100%; }
@@ -661,7 +662,7 @@ $("pvHeadBtn").addEventListener("click", () => addPvBranch(true));
 
 /* ================= 自由対局 ================= */
 async function engineMoveOnce(movetimeMs){
-  const res = await engine.runSearch(current.sfen, 1, "play");
+  const res = await engine.runSearch(current.sfen, 1, "play", movetimeMs);
   if (!res.best || res.best === "resign") {
     setStatus("投了です。" + (currentPos().turn === "b" ? "後手" : "先手") + "の勝ちです");
     stopAiVsAi();
@@ -672,9 +673,22 @@ async function engineMoveOnce(movetimeMs){
 $("engineMoveBtn").addEventListener("click", async () => {
   if (engineBusy) return;
   engineBusy = true;
-  try { await engineMoveOnce(1000); }
-  catch (e) { setStatus(e.message); }
-  engineBusy = false;
+  const button = $("engineMoveBtn");
+  const label = button.textContent;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "エンジンが思考中…";
+  setStatus("エンジンに1手を依頼しました");
+  try {
+    if (await engineMoveOnce(1000)) setStatus("エンジンが1手指しました");
+  } catch (e) {
+    setStatus(e.message);
+  } finally {
+    engineBusy = false;
+    button.textContent = label;
+    button.removeAttribute("aria-busy");
+    button.disabled = false;
+  }
 });
 function aiSideTurn(){
   const v = $("aiSide").value;
@@ -942,7 +956,7 @@ $("memoBtn").addEventListener("click", () => {
   $("engineStatusText").textContent = engine.ready ? "つようら王11micro" : "盤面・棋譜モード";
 })();
 </script>
-<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=7"></script></body>
+<p class="small"><a href="engine-test/engine-notices.txt">エンジン・評価関数のライセンスとソース</a> · <a href="engine-test/YaneuraOu-corresponding-source.zip">対応ソースを取得</a></p><script src="wasm-engine.js?v=8"></script></body>
 </html>
 
 
